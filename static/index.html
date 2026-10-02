@@ -1,1 +1,238 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>大坝巡检、缺陷与应急管理</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#17212b}pre{background:#f4f7f9;padding:1rem;overflow:auto}button{padding:.55rem 1rem}</style></head><body><h1>大坝巡检、缺陷与应急管理</h1><p>安排巡检，记录渗流、位移、裂缝等缺陷并跟踪修复、复检和应急预案</p><p>异常值比控制阈值越高，缺陷优先级越高；应急处置缺陷必须完成复检并记录证据后才能关闭。</p><button onclick="loadItems()">刷新列表</button><pre id="out">使用X-Actor和X-Role请求头调用接口。</pre><script>async function loadItems(){const r=await fetch('/api/items',{headers:{'X-Actor':'demo','X-Role':'viewer'}});document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>大坝巡检版本台账</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+       max-width:1080px;margin:1.5rem auto;padding:0 1rem;color:#17212b;background:#f7f9fb}
+  h1{font-size:1.35rem} h2{font-size:1.05rem;margin:1.2rem 0 .5rem}
+  .card{background:#fff;border:1px solid #e3e8ee;border-radius:8px;padding:1rem;margin:.6rem 0}
+  .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.35rem 0}
+  input,select,button{padding:.45rem .6rem;border:1px solid #c6ced6;border-radius:5px;font-size:.9rem}
+  button{cursor:pointer;background:#2266a8;color:#fff;border-color:#2266a8}
+  button.ghost{background:#fff;color:#2266a8}
+  table{border-collapse:collapse;width:100%;font-size:.84rem}
+  th,td{border:1px solid #e3e8ee;padding:.35rem .5rem;text-align:left;vertical-align:top}
+  th{background:#f0f4f8}
+  .tag{display:inline-block;padding:.05rem .45rem;border-radius:10px;font-size:.76rem;color:#fff}
+  .confirmed{background:#2e8b57}.conflict{background:#c0392b}
+  .pending_verification{background:#d68910}.issued{background:#1f618d}
+  .reviewed{background:#7d3c98}.pending{background:#5d6d7e}.invalidated{background:#95a5a6}
+  .muted{color:#6b7785;font-size:.82rem}
+  pre{background:#0f1b26;color:#d6e2ee;padding:.7rem;border-radius:6px;overflow:auto;
+      font-size:.78rem;max-height:260px}
+  .hint{background:#fff8e1;border:1px solid #f0d488;padding:.5rem .7rem;border-radius:6px;font-size:.84rem}
+</style>
+</head>
+<body>
+<h1>汛期巡堤 · 缺陷版本台账</h1>
+<p class="hint">上报须带 <b>请求号</b> 与 <b>基准版本</b>：同号重复提交沿用第一次结果；两人同时上报，先到成立、后到留作冲突不覆盖读数。新读数或阈值变化立即作废未完成签发并重算优先级/期限；已签发保留当时依据。</p>
+
+<div class="card">
+  <div class="row">
+    <label>身份 <input id="actor" value="张巡" size="8"></label>
+    <label>角色
+      <select id="role">
+        <option value="inspector">巡检员 inspector（上报）</option>
+        <option value="dam_engineer">坝工程师 dam_engineer（复核/补核/阈值）</option>
+        <option value="emergency_manager">应急负责人 emergency_manager（签发）</option>
+        <option value="viewer">其他角色 viewer（仅查看）</option>
+      </select>
+    </label>
+    <button class="ghost" onclick="loadItems()">刷新缺陷列表</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>新建缺陷（巡检员）</h2>
+  <div class="row">
+    <input id="f_title" placeholder="标题" value="K2+300 散浸">
+    <input id="f_desc" placeholder="描述" value="背水坡散浸">
+    <select id="f_sev"><option>observation</option><option>minor</option><option selected>major</option><option>emergency</option></select>
+    <input id="f_qty" type="number" value="5" size="6" title="当前读数">
+    <input id="f_thr" type="number" value="10" size="6" title="控制阈值">
+    <input id="f_ref" placeholder="external_ref" value="" size="10">
+    <button onclick="createItem()">创建</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>缺陷列表</h2>
+  <table><thead><tr><th>ID</th><th>标题</th><th>等级</th><th>读数/阈值</th>
+    <th>当前版本</th><th>优先级</th><th>期限(h)</th><th>状态</th><th></th></tr></thead>
+  <tbody id="items"></tbody></table>
+</div>
+
+<div class="card" id="ledgerCard" style="display:none">
+  <h2>版本台账 · 缺陷 <span id="lid"></span></h2>
+  <div class="row"><b>当前版本：<span id="curVer"></span></b>
+    <button class="ghost" onclick="loadLedger()">刷新台账</button></div>
+
+  <h2>应急签发链</h2>
+  <table><thead><tr><th>单号</th><th>状态</th><th>基准版本</th><th>优先级</th>
+    <th>期限(h)</th><th>依据/失效来源</th><th>结论</th><th>操作</th></tr></thead>
+  <tbody id="issuances"></tbody></table>
+
+  <h2>冲突上报（后到内容，未覆盖读数）</h2>
+  <table><thead><tr><th>请求号</th><th>上报人</th><th>基准版本</th><th>读数</th>
+    <th>类型/内容</th><th>时间</th></tr></thead><tbody id="conflicts"></tbody></table>
+
+  <h2>待补核（旧记录缺请求号/基准版本）</h2>
+  <table><thead><tr><th>记录ID</th><th>类型</th><th>内容</th><th>上报人</th><th>补核</th></tr></thead>
+  <tbody id="pending"></tbody></table>
+
+  <h2>巡检记录</h2>
+  <table><thead><tr><th>ID</th><th>类型</th><th>内容</th><th>请求号</th>
+    <th>基准版本</th><th>结论</th><th>上报人</th></tr></thead><tbody id="records"></tbody></table>
+</div>
+
+<div class="card">
+  <h2>上报读数（巡检员）</h2>
+  <div class="row">
+    <input id="r_item" placeholder="缺陷ID" size="6">
+    <input id="r_req" placeholder="请求号 request_id" value="REQ-NEW" size="12">
+    <input id="r_base" placeholder="基准版本" size="8">
+    <input id="r_reading" type="number" placeholder="新读数" size="8">
+    <input id="r_detail" placeholder="类型/内容，如 seepage:渗流量" value="seepage:渗流量升" size="22">
+    <button onclick="report()">上报</button>
+    <button class="ghost" onclick="legacyReport()">无请求号登记（转待补核）</button>
+  </div>
+  <p class="muted">两人同时上报时请各自填入相同基准版本与不同请求号；后到者会进入上方“冲突上报”。</p>
+</div>
+
+<div class="card">
+  <h2>坝工程师 / 应急负责人操作</h2>
+  <div class="row">
+    <input id="a_item" placeholder="缺陷ID" size="6">
+    <input id="a_base" placeholder="基准版本" size="8">
+    <input id="a_iss" placeholder="签发单号" size="8">
+    <button onclick="review()">复核签发单（工程师）</button>
+    <input id="a_concl" placeholder="应急结论" value="启动Ⅲ级响应" size="18">
+    <button onclick="issue()">签发（负责人）</button>
+  </div>
+  <div class="row">
+    <input id="t_item" placeholder="缺陷ID" size="6">
+    <input id="t_base" placeholder="基准版本" size="8">
+    <input id="t_val" type="number" placeholder="新阈值" size="8">
+    <button onclick="changeThreshold()">变更控制阈值（工程师）</button>
+  </div>
+</div>
+
+<h2>最近响应</h2>
+<pre id="out">—</pre>
+
+<script>
+let currentLedger = null;
+const H = () => ({'Content-Type':'application/json','X-Actor':actor.value,'X-Role':role.value});
+const out = document.getElementById('out');
+function show(x){ out.textContent = typeof x==='string'?x:JSON.stringify(x,null,2); }
+async function api(path, opts){
+  const r = await fetch(path, Object.assign({headers:H()}, opts));
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok){ show({http:r.status, error:data}); throw new Error(data.message||r.status); }
+  return data;
+}
+function tag(cls,t){ return `<span class="tag ${cls}">${t}</span>`; }
+function esc(s){ return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async function createItem(){
+  const body={title:f_title.value,description:f_desc.value,severity:f_sev.value,
+    quantity:Number(f_qty.value),threshold:Number(f_thr.value),
+    external_ref:f_ref.value||null};
+  show(await api('/api/items',{method:'POST',body:JSON.stringify(body)}));
+  loadItems();
+}
+async function loadItems(){
+  const d = await api('/api/items');
+  items.innerHTML = d.items.map(it=>`<tr>
+    <td>${it.id}</td><td>${esc(it.title)}</td><td>${it.severity}</td>
+    <td>${it.quantity} / ${it.threshold}${it.escalation_required?' ⚠':''}</td>
+    <td><b>${it.version}</b></td><td>${it.priority}</td><td>${it.deadline_hours}</td>
+    <td>${it.status}</td>
+    <td><button onclick='openLedger(${it.id},${it.version})'>台账</button></td></tr>`).join('')
+    || '<tr><td colspan="9" class="muted">暂无缺陷</td></tr>';
+}
+async function openLedger(id,ver){
+  r_item.value=id; a_item.value=id; t_item.value=id; r_base.value=ver;
+  ledgerCard.style.display='block'; lid.textContent=id;
+  await loadLedger();
+}
+async function loadLedger(){
+  const id = r_item.value;
+  const d = await api(`/api/items/${id}/ledger`);
+  currentLedger = d;
+  curVer.textContent = d.current_version;
+  r_base.value = d.current_version; a_base.value = d.current_version; t_base.value = d.current_version;
+
+  issuances.innerHTML = d.issuances.map(i=>{
+    const src = i.state==='invalidated' ? `失效于 ${esc(i.invalidated_by)}<br><span class="muted">原依据 ${esc(i.basis)}</span>`
+                                         : esc(i.basis);
+    const acts = i.state==='pending' ? `<button onclick="reviewIss(${i.id})">复核</button>`
+              : i.state==='reviewed' ? `<button onclick="issueIss(${i.id})">签发</button>` : '';
+    return `<tr><td>${i.id}</td><td>${tag(i.state,i.state)}</td><td>${i.base_version}</td>
+      <td>${i.priority}</td><td>${i.deadline_hours}</td><td>${src}</td>
+      <td>${esc(i.conclusion||'')}</td><td>${acts}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">无签发单</td></tr>';
+
+  conflicts.innerHTML = d.conflicts.map(c=>`<tr>
+    <td>${esc(c.request_id)}</td><td>${esc(c.created_by)}</td><td>${c.base_version}</td>
+    <td><b>${c.reading??''}</b></td><td>${esc(c.kind)} / ${esc(c.detail)}</td>
+    <td class="muted">${c.created_at}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="muted">无冲突</td></tr>';
+
+  pending.innerHTML = d.pending_verifications.map(r=>`<tr>
+    <td>${r.id}</td><td>${esc(r.kind)}</td><td>${esc(r.detail)}</td>
+    <td>${esc(r.created_by)}</td>
+    <td><input id="rv${r.id}" type="number" placeholder="确认读数" size="8">
+        <button onclick="verifyRec(${r.id})">补核</button></td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">无待补核</td></tr>';
+
+  records.innerHTML = d.records.map(r=>`<tr>
+    <td>${r.id}</td><td>${esc(r.kind)}</td><td>${esc(r.detail)}</td>
+    <td>${esc(r.request_id||'—')}</td><td>${r.base_version??'—'}</td>
+    <td>${tag(r.resolution,r.resolution)}</td><td>${esc(r.created_by)}</td></tr>`).join('');
+}
+async function report(){
+  const [kind,...rest]=r_detail.value.split(':');
+  const body={request_id:r_req.value,base_version:Number(r_base.value),
+    reading:r_reading.value===''?null:Number(r_reading.value),
+    kind:kind,detail:rest.join(':')||kind};
+  show(await api(`/api/items/${r_item.value}/records`,{method:'POST',body:JSON.stringify(body)}));
+  await loadLedger();
+}
+async function legacyReport(){
+  const body={kind:'seepage',detail:'旧记录本补测，无请求号'};
+  show(await api(`/api/items/${r_item.value}/records`,{method:'POST',body:JSON.stringify(body)}));
+  await loadLedger();
+}
+async function verifyRec(rid){
+  const v=document.getElementById('rv'+rid).value;
+  show(await api(`/api/items/${r_item.value}/records/verify`,{method:'POST',
+    body:JSON.stringify({record_id:rid,base_version:Number(r_base.value),
+      reading:v===''?null:Number(v)})}));
+  await loadLedger();
+}
+async function reviewIss(iid){
+  show(await api(`/api/items/${r_item.value}/issuances/review`,{method:'POST',
+    body:JSON.stringify({issuance_id:iid,base_version:Number(a_base.value)})}));
+  await loadLedger();
+}
+async function issueIss(iid){
+  show(await api(`/api/items/${r_item.value}/issuances/issue`,{method:'POST',
+    body:JSON.stringify({issuance_id:iid,base_version:Number(a_base.value),
+      conclusion:a_concl.value})}));
+  await loadLedger();
+}
+async function review(){ return reviewIss(Number(a_iss.value)); }
+async function issue(){ return issueIss(Number(a_iss.value)); }
+async function changeThreshold(){
+  show(await api(`/api/items/${t_item.value}/threshold`,{method:'POST',
+    body:JSON.stringify({base_version:Number(t_base.value),threshold:Number(t_val.value)})}));
+  await loadLedger();
+}
+loadItems();
+</script>
+</body>
+</html>

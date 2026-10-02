@@ -3,7 +3,13 @@ from .domain import ConflictError, ValidationError
 TITLE='大坝巡检、缺陷与应急管理'; ENTITY='大坝缺陷'; ID_PREFIX='DS'
 SEVERITIES=['observation', 'minor', 'major', 'emergency']; STATES=['planned', 'inspected', 'defect_confirmed', 'repair', 'verified', 'closed']; TRANSITIONS={'planned': ['inspected'], 'inspected': ['defect_confirmed'], 'defect_confirmed': ['repair'], 'repair': ['verified'], 'verified': ['closed'], 'closed': []}; TRANSITION_ROLES={'inspected': ['inspector'], 'defect_confirmed': ['dam_engineer'], 'repair': ['dam_engineer'], 'verified': ['inspector'], 'closed': ['emergency_manager']}
 CREATE_ROLES=set(['inspector']); RECORD_ROLES=set(['inspector', 'dam_engineer']); AUDIT_ROLES=set(['emergency_manager', 'viewer']); VIEW_ROLES=set(['inspector', 'dam_engineer', 'emergency_manager', 'viewer'])
+# 版本台账角色分工：巡检员上报、坝工程师复核/补核/阈值、应急负责人签发，其余只读
+REPORT_ROLES=set(['inspector']); REVIEW_ROLES=set(['dam_engineer']); THRESHOLD_ROLES=set(['dam_engineer']); ISSUE_ROLES=set(['emergency_manager'])
 SEVERITY_WEIGHT={'observation': 1.0, 'minor': 3.0, 'major': 6.0, 'emergency': 9.0}; DEADLINE_HOURS={'observation': 72, 'minor': 24, 'major': 8, 'emergency': 4}; TERMINAL_STATES=set(['closed'])
+# 上报记录的处置结论：成立 / 留作冲突 / 待补核（旧记录缺请求号或基准版本）
+RESOLUTIONS=('confirmed','conflict','pending_verification')
+# 应急签发生命周期：待复核 -> 已复核 -> 已签发；未完成的会被新读数/阈值变化作废
+ISSUANCE_STATES=('pending','reviewed','issued','invalidated'); OPEN_ISSUANCE_STATES=('pending','reviewed')
 def priority_score(severity,quantity=0.0,threshold=1.0,open_records=0):
     if severity not in SEVERITY_WEIGHT: raise ValidationError("unknown severity")
     ratio=quantity/threshold if threshold>0 else 1.0

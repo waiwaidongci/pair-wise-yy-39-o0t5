@@ -73,9 +73,15 @@ def make_handler(service: Service, static_dir: str):
                 status = 500
             self._json(status, {"error": exc.__class__.__name__, "message": str(exc)})
 
+        @staticmethod
+        def _segments(path: str):
+            parts = [p for p in path.split("/") if p]
+            return parts
+
         def do_GET(self) -> None:
             try:
                 path = urlparse(self.path).path
+                parts = self._segments(path)
                 if path == "/health":
                     self._json(200, {"status": "ok"})
                 elif path == "/":
@@ -84,11 +90,18 @@ def make_handler(service: Service, static_dir: str):
                     actor, role = self._identity()
                     del actor
                     self._json(200, {"items": service.list_items(role)})
-                elif path.startswith("/api/items/") and path.endswith("/records"):
-                    item_id = int(path.split("/")[3])
+                elif len(parts) == 5 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "records":
+                    item_id = int(parts[2])
                     actor, role = self._identity()
                     del actor
                     self._json(200, {"records": service.list_records(item_id, role)})
+                elif len(parts) == 4 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "ledger":
+                    item_id = int(parts[2])
+                    actor, role = self._identity()
+                    del actor
+                    self._json(200, service.ledger(item_id, role))
                 elif path.startswith("/api/items/"):
                     item_id = int(path.rsplit("/", 1)[-1])
                     actor, role = self._identity()
@@ -106,15 +119,47 @@ def make_handler(service: Service, static_dir: str):
         def do_POST(self) -> None:
             try:
                 path = urlparse(self.path).path
+                parts = self._segments(path)
                 actor, role = self._identity()
                 body = self._body()
                 if path == "/api/items":
                     self._json(201, service.create_item(body, actor, role))
-                elif path.startswith("/api/items/") and path.endswith("/records"):
-                    item_id = int(path.split("/")[3])
+                elif len(parts) == 5 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "records" and parts[4] == "verify":
+                    item_id = int(parts[2])
+                    record_id = body.get("record_id")
+                    if not isinstance(record_id, int) or isinstance(record_id, bool):
+                        raise ValidationError("record_id必须是整数")
+                    self._json(200, service.verify_record(
+                        item_id, record_id, body, actor, role))
+                elif len(parts) == 5 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "issuances" and parts[4] == "review":
+                    item_id = int(parts[2])
+                    issuance_id = body.get("issuance_id")
+                    if not isinstance(issuance_id, int) or isinstance(issuance_id, bool):
+                        raise ValidationError("issuance_id必须是整数")
+                    self._json(200, service.review_issuance(
+                        item_id, issuance_id, body, actor, role))
+                elif len(parts) == 5 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "issuances" and parts[4] == "issue":
+                    item_id = int(parts[2])
+                    issuance_id = body.get("issuance_id")
+                    if not isinstance(issuance_id, int) or isinstance(issuance_id, bool):
+                        raise ValidationError("issuance_id必须是整数")
+                    self._json(200, service.issue_issuance(
+                        item_id, issuance_id, body, actor, role))
+                elif len(parts) == 4 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "threshold":
+                    item_id = int(parts[2])
+                    self._json(200, service.change_threshold(
+                        item_id, body, actor, role))
+                elif len(parts) == 4 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "records":
+                    item_id = int(parts[2])
                     self._json(201, service.add_record(item_id, body, actor, role))
-                elif path.startswith("/api/items/") and path.endswith("/transition"):
-                    item_id = int(path.split("/")[3])
+                elif len(parts) == 4 and parts[:2] == ["api", "items"] \
+                        and parts[3] == "transition":
+                    item_id = int(parts[2])
                     target = body.get("target")
                     expected = body.get("expected_version")
                     self._json(200, service.transition(
