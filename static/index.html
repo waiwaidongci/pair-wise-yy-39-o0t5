@@ -1,1 +1,216 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>大坝巡检、缺陷与应急管理</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#17212b}pre{background:#f4f7f9;padding:1rem;overflow:auto}button{padding:.55rem 1rem}</style></head><body><h1>大坝巡检、缺陷与应急管理</h1><p>安排巡检，记录渗流、位移、裂缝等缺陷并跟踪修复、复检和应急预案</p><p>异常值比控制阈值越高，缺陷优先级越高；应急处置缺陷必须完成复检并记录证据后才能关闭。</p><button onclick="loadItems()">刷新列表</button><pre id="out">使用X-Actor和X-Role请求头调用接口。</pre><script>async function loadItems(){const r=await fetch('/api/items',{headers:{'X-Actor':'demo','X-Role':'viewer'}});document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>大坝巡检、缺陷与应急管理 · 版本台账</title>
+<style>
+:root{--ink:#17212b;--mut:#5b6b7a;--line:#dfe6ec;--bg:#f4f7f9;--card:#fff;--ok:#1a7f4b;--warn:#b25e00;--bad:#b3261e;--accent:#1f6feb}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;color:var(--ink);background:var(--bg)}
+header{background:#0f2233;color:#fff;padding:1rem 1.25rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}
+header h1{font-size:1.1rem;margin:0;font-weight:600}
+header .who{margin-left:auto;display:flex;gap:.5rem;align-items:center;font-size:.85rem}
+select,input,button,textarea{font:inherit;padding:.45rem .6rem;border:1px solid var(--line);border-radius:6px;background:#fff}
+button{cursor:pointer;background:var(--accent);color:#fff;border-color:var(--accent)}
+button.ghost{background:#fff;color:var(--ink)}
+button.sm{padding:.25rem .5rem;font-size:.8rem}
+main{max-width:1180px;margin:0 auto;padding:1.25rem;display:grid;grid-template-columns:320px 1fr;gap:1.25rem;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;margin-bottom:1rem}
+.card h2{font-size:.95rem;margin:0 0 .75rem;display:flex;align-items:center;gap:.5rem}
+.card h2 .tag{font-size:.7rem;font-weight:500;color:var(--mut)}
+.item-row{padding:.6rem .7rem;border:1px solid var(--line);border-radius:8px;margin-bottom:.5rem;cursor:pointer}
+.item-row.active{border-color:var(--accent);background:#eef4ff}
+.item-row .t{font-weight:600;font-size:.9rem}
+.item-row .m{font-size:.75rem;color:var(--mut);margin-top:.15rem}
+.badge{display:inline-block;font-size:.7rem;padding:.1rem .45rem;border-radius:999px;font-weight:600}
+.badge.ok{background:#e3f4ea;color:var(--ok)}
+.badge.warn{background:#fdeeda;color:var(--warn)}
+.badge.bad{background:#fbe4e2;color:var(--bad)}
+.badge.mut{background:#eef1f4;color:var(--mut)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.5rem;font-size:.85rem}
+.kv div{background:var(--bg);border-radius:6px;padding:.45rem .6rem}
+.kv .k{color:var(--mut);font-size:.7rem;display:block}
+.kv .v{font-weight:600;font-size:.95rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th,td{text-align:left;padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:.75rem}
+pre{background:#0f2233;color:#d6e2ee;padding:.75rem;border-radius:8px;overflow:auto;font-size:.75rem}
+form.inline{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin-top:.5rem}
+form.inline input,form.inline select{padding:.35rem .5rem;font-size:.82rem}
+.mut{color:var(--mut)}
+.src{font-size:.75rem;color:var(--warn);margin-top:.25rem}
+.conflict{background:#fff7f6;border-left:3px solid var(--bad);padding:.4rem .5rem;border-radius:4px;margin-top:.25rem;font-size:.78rem}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>大坝巡检、缺陷与应急管理 · 版本台账</h1>
+  <div class="who">
+    <label>身份 <input id="actor" value="demo" size="8"></label>
+    <label>角色
+      <select id="role">
+        <option value="viewer">viewer 只读</option>
+        <option value="inspector">inspector 巡检员</option>
+        <option value="dam_engineer">dam_engineer 坝工程师</option>
+        <option value="emergency_manager">emergency_manager 应急负责人</option>
+      </select>
+    </label>
+    <button class="ghost sm" onclick="refresh()">刷新</button>
+  </div>
+</header>
+<main>
+  <section>
+    <div class="card">
+      <h2>缺陷列表</h2>
+      <div id="items"></div>
+      <form class="inline" onsubmit="return createItem(event)">
+        <input id="ni-title" placeholder="标题" required>
+        <input id="ni-desc" placeholder="描述" required>
+        <select id="ni-sev"><option>observation</option><option>minor</option><option>major</option><option>emergency</option></select>
+        <input id="ni-qty" type="number" step="any" placeholder="量值" value="0" style="width:80px">
+        <input id="ni-th" type="number" step="any" placeholder="阈值" value="1" style="width:80px">
+        <button class="sm" type="submit">新建</button>
+      </form>
+    </div>
+  </section>
+  <section id="detail"><div class="card"><p class="mut">选择左侧缺陷查看版本台账。</p></div></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const H=()=>({'X-Actor':$('#actor').value||'demo','X-Role':$('#role').value,'Content-Type':'application/json'});
+async function api(path,opts={}){const r=await fetch(path,{headers:H(),...opts});const t=await r.text();let b;try{b=t?JSON.parse(t):{}}catch{b={raw:t}}if(!r.ok)throw new Error(b.message||r.status);return b}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]));
+const sevBadge=s=>({observation:'mut',minor:'ok',major:'warn',emergency:'bad'}[s]||'mut');
+let current=null;
+async function refresh(){
+  const data=await api('/api/items');const el=$('#items');el.innerHTML='';
+  data.items.forEach(it=>{const d=document.createElement('div');d.className='item-row'+(current&&current.id===it.id?' active':'');
+    d.innerHTML=`<div class="t">${esc(it.title)} <span class="badge ${sevBadge(it.severity)}">${esc(it.severity)}</span></div>
+      <div class="m">版本 v${it.version} · ${esc(it.status)} · 优先级 ${it.priority} · 期限 ${it.deadline_hours}h</div>`;
+    d.onclick=()=>loadItem(it.id);el.appendChild(d)});
+  if(current){const it=data.items.find(x=>x.id===current.id);if(it)render(it)}
+}
+async function loadItem(id){current=await api(`/api/items/${id}`);render(current)}
+function render(it){
+  const L=it.ledger||{};const sg=L.signoffs||{};
+  const invalidSrc=L.latest_invalidation?`<div class="src">失效来源：${esc(L.latest_invalidation.source_type)}${L.latest_invalidation.source_id?` #${L.latest_invalidation.source_id}`:''} · ${esc(JSON.stringify(L.latest_invalidation.detail))}</div>`:'';
+  $('#detail').innerHTML=`
+  <div class="card">
+    <h2>${esc(it.title)} <span class="tag">当前版本 v${it.current_version}</span>
+      <span class="badge ${sevBadge(it.severity)}">${esc(it.severity)}</span></h2>
+    <div class="kv">
+      <div><span class="k">状态</span><span class="v">${esc(it.status)}</span></div>
+      <div><span class="k">当前版本</span><span class="v">v${it.current_version}</span></div>
+      <div><span class="k">优先级</span><span class="v">${it.priority}</span></div>
+      <div><span class="k">响应期限</span><span class="v">${it.deadline_hours}h</span></div>
+      <div><span class="k">量值 / 阈值</span><span class="v">${it.quantity} / ${it.threshold}</span></div>
+      <div><span class="k">升级要求</span><span class="v">${it.escalation_required?'是':'否'}</span></div>
+    </div>
+    ${invalidSrc}
+    <p class="mut" style="margin:.5rem 0 0">${esc(it.description)}</p>
+  </div>
+
+  <div class="card">
+    <h2>巡检读数 <span class="tag">已确认 ${L.conflict??0} · 冲突 ${L.conflict??0} · 待补核 ${L.pending_supplement??0}</span></h2>
+    <div id="records"><p class="mut">加载中…</p></div>
+    <form class="inline" onsubmit="return addRecord(event)">
+      <input id="r-kind" placeholder="种类(渗流/位移)" required style="width:130px">
+      <input id="r-detail" placeholder="读数内容" required style="width:200px">
+      <input id="r-measure" type="number" step="any" placeholder="测值" style="width:80px">
+      <input id="r-req" placeholder="请求号(幂等)" style="width:140px">
+      <input id="r-base" type="number" placeholder="基准版本" style="width:90px">
+      <button class="sm" type="submit">上报</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>应急签发 <span class="tag">草稿 ${sg.draft??0} · 已复核 ${sg.reviewed??0} · 已签发 ${sg.issued??0} · 已失效 ${sg.invalid??0}</span></h2>
+    <div id="signoffs"><p class="mut">加载中…</p></div>
+    <form class="inline" onsubmit="return createSignoff(event)">
+      <button class="sm" type="submit">应急负责人起草签发</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>控制阈值变更 <span class="tag">乐观锁，未完成签发立即失效</span></h2>
+    <form class="inline" onsubmit="return changeThreshold(event)">
+      <input id="t-th" type="number" step="any" placeholder="新阈值" required style="width:120px">
+      <input id="t-ver" type="number" placeholder="expected_version" required style="width:120px">
+      <button class="sm" type="submit">变更阈值</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>状态流转</h2>
+    <form class="inline" onsubmit="return transition(event)">
+      <select id="tr-target"><option>inspected</option><option>defect_confirmed</option><option>repair</option><option>verified</option><option>closed</option></select>
+      <input id="tr-ver" type="number" placeholder="expected_version" required style="width:120px">
+      <button class="sm" type="submit">流转</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>审计链</h2>
+    <div id="audit"><p class="mut">加载中…</p></div>
+  </div>`;
+  loadRecords(it.id);loadSignoffs(it.id);loadAudit(it.id);
+}
+async function loadRecords(id){
+  const {records}=await api(`/api/items/${id}/records`);
+  const el=$('#records');if(!records.length){el.innerHTML='<p class="mut">暂无读数</p>';return}
+  el.innerHTML=`<table><thead><tr><th>ID</th><th>种类</th><th>内容</th><th>测值</th><th>请求号</th><th>基准版本</th><th>台账状态</th><th>上报人</th><th>操作</th></tr></thead><tbody>
+  ${records.map(r=>{const lb={confirmed:['ok','已确认'],conflict:['bad','冲突'],pending_supplement:['warn','待补核']}[r.ledger_status]||['mut',r.ledger_status];
+    return `<tr><td>${r.id}</td><td>${esc(r.kind)}</td><td>${esc(r.detail)}${r.ledger_status==='conflict'?`<div class="conflict">冲突内容：基准版本 v${r.baseline_version} 已落后，未盖掉已确认读数</div>`:''}</td>
+    <td>${r.measure??'—'}</td><td>${esc(r.request_no)||'—'}</td><td>${r.baseline_version?`v${r.baseline_version}`:'—'}</td>
+    <td><span class="badge ${lb[0]}">${lb[1]}</span></td><td>${esc(r.created_by)}</td>
+    <td>${r.ledger_status==='pending_supplement'?`<button class="sm ghost" onclick="supplement(${r.id})">补核</button>`:''}</td></tr>`}).join('')}
+  </tbody></table>`;
+}
+async function loadSignoffs(id){
+  const {signoffs}=await api(`/api/items/${id}/signoffs`);
+  const el=$('#signoffs');if(!signoffs.length){el.innerHTML='<p class="mut">暂无签发</p>';return}
+  el.innerHTML=`<table><thead><tr><th>ID</th><th>状态</th><th>冻结依据</th><th>失效来源</th><th>复核</th><th>操作</th></tr></thead><tbody>
+  ${signoffs.map(s=>{const st={draft:['warn','草稿'],reviewed:['mut','已复核'],issued:['ok','已签发'],invalid:['bad','已失效']}[s.status]||['mut',s.status];
+    const basis=`${s.basis_severity} / 量值${s.basis_quantity} / 阈值${s.basis_threshold} / 优先级${s.basis_priority} / 期限${s.basis_deadline_hours}h`;
+    const inv=s.invalidation_source_type?`<div class="src">${esc(s.invalidation_source_type)}${s.invalidation_source_id?` #${s.invalidation_source_id}`:''} · ${esc(s.invalidation_detail||'')}</div>`:'—';
+    return `<tr><td>${s.id}</td><td><span class="badge ${st[0]}">${st[1]}</span></td><td>${basis}</td><td>${inv}</td>
+    <td>${s.review_note?esc(s.review_note)+'<br><span class="mut">'+esc(s.reviewed_by)+'</span>':'—'}</td>
+    <td>${s.status==='draft'?`<button class="sm ghost" onclick="review(${s.id})">复核</button> <button class="sm" onclick="issue(${s.id})">签发</button>`:''}${s.status==='reviewed'?`<button class="sm" onclick="issue(${s.id})">签发</button>`:''}</td></tr>`}).join('')}
+  </tbody></table>`;
+}
+async function loadAudit(id){
+  try{const {events}=await api('/api/audit');const el=$('#audit');
+    el.innerHTML=`<pre>${events.filter(e=>e.entity_id===id).map(e=>`#${e.id} ${e.action} by ${e.actor} @ ${e.created_at}\n${JSON.stringify(e.detail)}`).join('\n\n')}</pre>`;
+  }catch(e){$('#audit').innerHTML='<p class="mut">仅应急负责人/管理员可查看审计链</p>'}
+}
+async function createItem(e){e.preventDefault();
+  try{await api('/api/items',{method:'POST',body:JSON.stringify({title:$('#ni-title').value,description:$('#ni-desc').value,severity:$('#ni-sev').value,quantity:Number($('#ni-qty').value),threshold:Number($('#ni-th').value)})});
+    $('#ni-title').value='';$('#ni-desc').value='';refresh()}catch(err){alert(err.message)}return false}
+async function addRecord(e){e.preventDefault();
+  const body={kind:$('#r-kind').value,detail:$('#r-detail').value,status:'open'};
+  if($('#r-measure').value!=='')body.measure=Number($('#r-measure').value);
+  if($('#r-req').value)body.request_no=$('#r-req').value;
+  if($('#r-base').value!=='')body.baseline_version=Number($('#r-base').value);
+  try{await api(`/api/items/${current.id}/records`,{method:'POST',body:JSON.stringify(body)});
+    $('#r-kind').value='';$('#r-detail').value='';$('#r-measure').value='';$('#r-req').value='';$('#r-base').value='';
+    await loadItem(current.id)}catch(err){alert(err.message)}return false}
+async function changeThreshold(e){e.preventDefault();
+  try{await api(`/api/items/${current.id}/threshold`,{method:'POST',body:JSON.stringify({threshold:Number($('#t-th').value),expected_version:Number($('#t-ver').value)})});
+    $('#t-th').value='';await loadItem(current.id)}catch(err){alert(err.message)}return false}
+async function createSignoff(e){e.preventDefault();
+  try{await api(`/api/items/${current.id}/signoffs`,{method:'POST',body:'{}'});await loadItem(current.id)}catch(err){alert(err.message)}return false}
+async function review(sid){const note=prompt('复核意见：');if(note===null)return;
+  try{await api(`/api/items/${current.id}/signoffs/${sid}/review`,{method:'POST',body:JSON.stringify({note})});await loadItem(current.id)}catch(err){alert(err.message)}}
+async function issue(sid){if(!confirm('确认签发？签发后保留当时依据，新读数不再影响已签发结论。'))return;
+  try{await api(`/api/items/${current.id}/signoffs/${sid}/issue`,{method:'POST',body:'{}'});await loadItem(current.id)}catch(err){alert(err.message)}}
+async function supplement(rid){const req=prompt('请求号：');if(!req)return;const base=prompt('基准版本：');if(!base)return;
+  try{await api(`/api/items/${current.id}/records/${rid}/supplement`,{method:'POST',body:JSON.stringify({request_no:req,baseline_version:Number(base)})});await loadItem(current.id)}catch(err){alert(err.message)}}
+async function transition(e){e.preventDefault();
+  try{await api(`/api/items/${current.id}/transition`,{method:'POST',body:JSON.stringify({target:$('#tr-target').value,expected_version:Number($('#tr-ver').value)})});
+    await loadItem(current.id)}catch(err){alert(err.message)}return false}
+refresh();
+</script>
+</body>
+</html>

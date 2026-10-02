@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Dict, Tuple
+from urllib.parse import urlparse
 
 from .domain import (ConflictError, DomainError, NotFoundError, PermissionDenied,
                      ValidationError)
@@ -81,22 +81,22 @@ def make_handler(service: Service, static_dir: str):
                 elif path == "/":
                     self._html(root / "index.html")
                 elif path == "/api/items":
-                    actor, role = self._identity()
-                    del actor
+                    _actor, role = self._identity()
                     self._json(200, {"items": service.list_items(role)})
                 elif path.startswith("/api/items/") and path.endswith("/records"):
                     item_id = int(path.split("/")[3])
-                    actor, role = self._identity()
-                    del actor
+                    _actor, role = self._identity()
                     self._json(200, {"records": service.list_records(item_id, role)})
+                elif path.startswith("/api/items/") and path.endswith("/signoffs"):
+                    item_id = int(path.split("/")[3])
+                    _actor, role = self._identity()
+                    self._json(200, {"signoffs": service.list_signoffs(item_id, role)})
                 elif path.startswith("/api/items/"):
                     item_id = int(path.rsplit("/", 1)[-1])
-                    actor, role = self._identity()
-                    del actor
+                    _actor, role = self._identity()
                     self._json(200, service.get_item(item_id, role))
                 elif path == "/api/audit":
-                    actor, role = self._identity()
-                    del actor
+                    _actor, role = self._identity()
                     self._json(200, {"events": service.audit(role)})
                 else:
                     self._json(404, {"error": "not_found"})
@@ -113,12 +113,36 @@ def make_handler(service: Service, static_dir: str):
                 elif path.startswith("/api/items/") and path.endswith("/records"):
                     item_id = int(path.split("/")[3])
                     self._json(201, service.add_record(item_id, body, actor, role))
+                elif path.startswith("/api/items/") and path.endswith("/threshold"):
+                    item_id = int(path.split("/")[3])
+                    self._json(200, service.change_threshold(item_id, body, actor, role))
+                elif path.startswith("/api/items/") and path.endswith("/signoffs"):
+                    item_id = int(path.split("/")[3])
+                    self._json(201, service.create_signoff(item_id, actor, role))
                 elif path.startswith("/api/items/") and path.endswith("/transition"):
                     item_id = int(path.split("/")[3])
                     target = body.get("target")
                     expected = body.get("expected_version")
                     self._json(200, service.transition(
                         item_id, target, expected, actor, role))
+                elif (path.startswith("/api/items/") and "/signoffs/" in path
+                      and path.endswith("/review")):
+                    parts = path.split("/")
+                    item_id, signoff_id = int(parts[3]), int(parts[5])
+                    self._json(200, service.review_signoff(
+                        item_id, signoff_id, body, actor, role))
+                elif (path.startswith("/api/items/") and "/signoffs/" in path
+                      and path.endswith("/issue")):
+                    parts = path.split("/")
+                    item_id, signoff_id = int(parts[3]), int(parts[5])
+                    self._json(200, service.issue_signoff(
+                        item_id, signoff_id, actor, role))
+                elif (path.startswith("/api/items/") and "/records/" in path
+                      and path.endswith("/supplement")):
+                    parts = path.split("/")
+                    item_id, record_id = int(parts[3]), int(parts[5])
+                    self._json(200, service.supplement_record(
+                        item_id, record_id, body, actor, role))
                 else:
                     self._json(404, {"error": "not_found"})
             except Exception as exc:
